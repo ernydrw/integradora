@@ -15,7 +15,7 @@ export const siteConfig = {
     instagramHandle: "@b2_creative",
     address: "Atención ejecutiva a nivel nacional / remoto",
     schedule: "Lunes a Viernes: 9:00 AM – 7:00 PM",
-    availabilityNotice: "🟢 Cupos abiertos para estrategia Q2 — Solo 3 lugares disponibles para asesoría personalizada"
+    availabilityNotice: "Cupos abiertos para estrategia — Solo 3 lugares disponibles"
   },
 
   // ESTADÍSTICAS DE IMPACTO (Gatillo de Autoridad)
