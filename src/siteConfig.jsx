@@ -184,7 +184,7 @@ export const siteConfig = {
 
   promo: {
     active: true,
-    badge: "ASESORÍA ESTRATÉGICA SIN COSTO 💬",
+    badge: "ASESORÍA ESTRATÉGICA 💬",
     title: "¿Listo para escalar las ventas de tu negocio?",
     subtitle: "Analicemos tu proyecto en una sesión privada por WhatsApp. Cada día sin una estrategia digital sólida es un cliente directo que se lleva tu competencia.",
     buttonText: "Reservar Asesoría por WhatsApp 🚀"
