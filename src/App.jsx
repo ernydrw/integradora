@@ -1,549 +1,587 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { siteConfig } from './siteConfig';
 import {
-  Menu, X, Sparkles, PhoneCall, Calendar, Send,
-  HelpCircle, TrendingUp, Search, Eye, DollarSign,
-  Mail, ArrowRight, ChevronDown, Check, ShieldCheck, Activity, Star
+  Menu, X, FileText, ExternalLink, Download,
+  Folder, FileCode, GitBranch, Eye, Archive,
+  ChevronRight, ArrowLeft, Globe
 } from 'lucide-react';
 
-const InstagramIcon = ({ className }) => (
-  <svg className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-    <rect width="20" height="20" x="2" y="2" rx="5" ry="5"/>
-    <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
-    <line x1="17.5" x2="17.51" y1="6.5" y2="6.5"/>
-  </svg>
-);
-
-const IconMap = ({ name, className }) => {
-  const icons = {
-    TrendingUp, Search, Eye, DollarSign, ShieldCheck, Activity
-  };
-  const IconComponent = icons[name] || HelpCircle;
-  return <IconComponent className={className} />;
-};
-
 export default function App() {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [activeCategory, setActiveCategory] = useState('todos');
-  const [openFaq, setOpenFaq] = useState(null);
+  // =========================================================================
+  // 1. ESTADOS (Variables que React vigila para actualizar la pantalla)
+  // =========================================================================
 
-  const [formData, setFormData] = useState({
-    nombre: '',
-    telefono: '',
-    mensaje: ''
-  });
+  // Controla si el menú de celular está abierto (true) o cerrado (false)
+  const [menuAbierto, setMenuAbierto] = useState(false);
 
-  const filteredServicios = activeCategory === 'todos'
-    ? siteConfig.services
-    : siteConfig.services.filter(item => item.categoria === activeCategory);
+  // Guarda qué categoría de PDF estamos filtrando ('todas' por defecto)
+  const [unidadActiva, setUnidadActiva] = useState('todas');
 
-  const getWhatsAppLink = (customText) => {
-    const text = customText || `¡Hola B2 Creative! Me gustaría agendar una sesión estratégica para platicar sobre el crecimiento de mi negocio.`;
-    return `https://wa.me/${siteConfig.brand.whatsappNumber}?text=${encodeURIComponent(text)}`;
-  };
+  // Guarda el PDF que el usuario quiere ver en grande (null = ventana cerrada)
+  // FUNCIONAMIENTO DEL VISOR PDF: Cuando vale null, la ventana modal está oculta.
+  // Al hacer clic en "Ver PDF", guardamos aquí el objeto con los datos de ese PDF
+  // (título, etiqueta y ruta) para que React dibuje la ventana emergente en pantalla.
+  const [pdfSeleccionado, setPdfSeleccionado] = useState(null);
 
-  const handleFormSubmit = (e) => {
-    e.preventDefault();
-    const mensajeWA = `¡Hola B2 Creative!\n*Nombre/Negocio:* ${formData.nombre}\n*Teléfono:* ${formData.telefono}\n*Consulta:* ${formData.mensaje}`;
-    window.open(getWhatsAppLink(mensajeWA), '_blank');
-  };
+  // Controla qué repositorio vemos: 0 = Frontend, 1 = Backend
+  // FUNCIONAMIENTO CON GITHUB: Este número elige cuál repositorio de la lista
+  // 'siteConfig.repositories' vamos a consultar en internet.
+  const [indiceRepo, setIndiceRepo] = useState(0);
 
+  // Guarda la carpeta actual dentro de GitHub ('' significa la carpeta raíz)
+  // FUNCIONAMIENTO CON GITHUB: Cuando entras a una carpeta (ej. "src"), este estado
+  // cambia a "src". Si entras a otra dentro ("src/components"), cambia a "src/components".
+  // Cada vez que este texto cambia, se vuelve a pedir a GitHub el contenido de esa nueva ruta.
+  const [rutaCarpeta, setRutaCarpeta] = useState('');
+
+  // Guarda la lista de archivos y carpetas que nos devuelve GitHub
+  // FUNCIONAMIENTO CON GITHUB: Empieza como un arreglo vacío []. Cuando GitHub responde,
+  // guardamos aquí todos los objetos (cada uno representa una carpeta o archivo con su nombre,
+  // tamaño en bytes, tipo y enlace web).
+  const [archivosRepo, setArchivosRepo] = useState([]);
+
+  // Indica si estamos esperando respuesta de internet (true) o ya terminó (false)
+  const [cargandoRepo, setCargandoRepo] = useState(true);
+
+  // Guarda un mensaje de error si falla la conexión con GitHub
+  const [errorRepo, setErrorRepo] = useState(null);
+
+  // =========================================================================
+  // 2. DATOS DEL REPOSITORIO ACTUAL
+  // =========================================================================
+
+  // Obtenemos el objeto del repositorio seleccionado desde siteConfig
+  const repoActual = siteConfig.repositories[indiceRepo];
+  const propietario = repoActual.owner;
+  const nombreRepo = repoActual.repo;
+  const rama = repoActual.branch;
+
+  // Armamos la dirección web completa del repositorio
+  const urlGitHub = `https://github.com/${propietario}/${nombreRepo}`;
+
+  // =========================================================================
+  // 3. FILTRADO DE ACTIVIDADES (PDFs)
+  // =========================================================================
+
+  let actividadesFiltradas = [];
+  if (unidadActiva === 'todas') {
+    // Si está en 'todas', mostramos la lista completa
+    actividadesFiltradas = siteConfig.activities;
+  } else {
+    // Si eligió una unidad específica, filtramos solo las que coincidan
+    actividadesFiltradas = siteConfig.activities.filter((actividad) => {
+      return actividad.unidad === unidadActiva;
+    });
+  }
+
+  // =========================================================================
+  // 4. FUNCIONES DE NAVEGACIÓN (Acciones al hacer clic)
+  // =========================================================================
+
+  // Cambia entre Frontend y Backend y reinicia la ruta a la carpeta principal
+  function cambiarRepositorio(nuevoIndice) {
+    setIndiceRepo(nuevoIndice);
+    setRutaCarpeta('');
+  }
+
+  // Regresa una carpeta hacia atrás en el explorador de GitHub
+  function regresarCarpetaAnterior() {
+    if (rutaCarpeta === '') return; // Si ya estamos en el inicio, no hace nada
+
+    // Separamos la ruta por diagonales. Ejemplo: "src/components" -> ["src", "components"]
+    const partes = rutaCarpeta.split('/');
+    // Quitamos el último elemento ("components")
+    partes.pop();
+    // Volvemos a unir lo que queda ("src")
+    setRutaCarpeta(partes.join('/'));
+  }
+
+  // Sube la pantalla suavemente hasta arriba
+  function irAlInicio() {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  // =========================================================================
+  // 5. CONEXIÓN CON LA API DE GITHUB (Se ejecuta al cambiar repo o carpeta)
+  // =========================================================================
+
+  // CÓMO SE CONECTA A GITHUB PASO A PASO:
+  // 1. 'useEffect': Es un vigilante de React. Ejecuta el código de adentro automáticamente
+  //    al abrir la página por primera vez y cada vez que cambien las variables del final
+  //    ([propietario, nombreRepo, rama, rutaCarpeta]).
+  // 2. 'async / await': Como pedir datos por internet tarda unos milisegundos, 'async' indica
+  //    que la función es asíncrona (no congela la pantalla) y 'await' le dice al programa:
+  //    "espera aquí hasta que GitHub termine de responder antes de pasar a la siguiente línea".
+  useEffect(() => {
+    async function obtenerArchivosDeGitHub() {
+      setCargandoRepo(true); // Activamos aviso de "Cargando..."
+      setErrorRepo(null);    // Limpiamos errores anteriores
+
+      try {
+        // Construimos la URL de la API de GitHub y pedimos los datos
+        // EXPLICACIÓN DE LA API DE GITHUB:
+        // GitHub tiene una dirección especial (api.github.com) que no devuelve páginas con botones,
+        // sino datos puros en formato JSON sobre cualquier repositorio público.
+        // - /repos/{propietario}/{nombreRepo}/contents/{rutaCarpeta}: pide el contenido de esa carpeta.
+        // - ?ref={rama}: especifica de qué rama (ej. 'main' o 'master') queremos leer los archivos.
+        const urlApi = `https://api.github.com/repos/${propietario}/${nombreRepo}/contents/${rutaCarpeta}?ref=${rama}`;
+
+        // 'fetch' es la función nativa de JavaScript que hace la petición HTTP por internet
+        const respuesta = await fetch(urlApi);
+
+        // Si la respuesta no es exitosa (ej. error 404), lanzamos un error manual
+        if (!respuesta.ok) {
+          throw new Error(`No se pudo cargar "${nombreRepo}". Verifica que sea público y la rama "${rama}" exista.`);
+        }
+
+        // Convertimos la respuesta a formato JSON (lista de objetos)
+        // GitHub nos entrega un arreglo de objetos, donde cada elemento tiene propiedades como:
+        // - name: nombre del archivo ("App.jsx")
+        // - type: "dir" si es carpeta, o "file" si es archivo
+        // - path: ruta completa ("src/App.jsx")
+        // - size: peso en bytes
+        // - html_url: enlace directo para abrir ese archivo en la web de GitHub
+        const datos = await respuesta.json();
+
+        // Ordenamos la lista: primero las carpetas ('dir') y luego los archivos en orden alfabético
+        if (Array.isArray(datos)) {
+          datos.sort((a, b) => {
+            if (a.type === b.type) {
+              // Si ambos son carpetas o ambos son archivos, ordenamos por nombre (A-Z)
+              return a.name.localeCompare(b.name);
+            }
+            if (a.type === 'dir') {
+              return -1; // 'a' va primero porque es carpeta
+            }
+            return 1;    // 'b' va primero
+          });
+          // Guardamos la lista ya ordenada en el estado 'archivosRepo' para dibujarla en pantalla
+          setArchivosRepo(datos);
+        } else {
+          setArchivosRepo([]);
+        }
+      } catch (error) {
+        // Si algo falló (sin internet o repo privado), guardamos el mensaje
+        setErrorRepo(error.message);
+      } finally {
+        // Pase lo que pase, apagamos el mensaje de "Cargando..."
+        setCargandoRepo(false);
+      }
+    }
+
+    obtenerArchivosDeGitHub();
+  }, [propietario, nombreRepo, rama, rutaCarpeta]); // Se repite si cambia alguno de estos 4 valores
+
+  // =========================================================================
+  // 6. INTERFAZ VISUAL (Lo que se dibuja en pantalla)
+  // =========================================================================
   return (
-<div className="relative w-screen min-h-screen bg-[#111317] text-slate-100 font-sans antialiased selection:bg-[#B8975B] selection:text-black overflow-x-hidden left-1/2 right-1/2 -ml-[50vw] -mr-[50vw]">
-      {/* EFECTOS DE LUZ AMBIENTAL PREMIUM */}
-      <div className="fixed inset-0 pointer-events-none z-0">
-        <div className="absolute -top-40 -left-40 w-[600px] h-[600px] bg-[#B8975B]/10 rounded-full blur-[140px]"></div>
-        <div className="absolute top-1/3 -right-40 w-[600px] h-[600px] bg-[#B8975B]/5 rounded-full blur-[160px]"></div>
-      </div>
+    <div className="relative w-screen min-h-screen bg-[#111317] text-slate-100 font-sans antialiased selection:bg-[#B8975B] selection:text-black overflow-x-hidden left-1/2 right-1/2 -ml-[50vw] -mr-[50vw]">
 
-      <div className="relative z-10 w-full">
+      {/* BARRA DE NAVEGACIÓN SUPERIOR */}
+      <header className="sticky top-0 z-40 backdrop-blur-xl bg-[#111317]/90 border-b border-slate-800">
+        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
 
-        {/* TOPBAR DE URGENCIA Y DISPONIBILIDAD */}
-        <div className="bg-[#16181e] border-b border-slate-800 text-xs py-2.5 px-6 text-center text-slate-300 font-medium tracking-wide">
-          <span className="inline-flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-[#B8975B] animate-ping"></span>
-            {siteConfig.brand.availabilityNotice}
-          </span>
-        </div>
-
-        {/* HEADER / NAVEGACIÓN FIJA */}
-        <header className="sticky top-0 z-50 backdrop-blur-xl bg-[#111317]/90 border-b border-slate-800/80 shadow-2xl">
-          <div className="w-full px-6 sm:px-12 lg:px-16 h-20 flex items-center justify-between">
-
-            {/* Logo */}
-            <div className="flex items-center space-x-3 cursor-pointer" onClick={() => window.scrollTo({top: 0, behavior: 'smooth'})}>
-              <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-[#B8975B] via-[#D4AF37] to-[#9E7E44] flex items-center justify-center font-black text-black text-xl shadow-lg shadow-[#B8975B]/20">
-                B2
-              </div>
-              <div>
-                <span className="text-2xl font-black tracking-tight text-white">
-                  {siteConfig.brand.name}<span className="text-[#B8975B]">{siteConfig.brand.nameHighlight}</span>
-                </span>
-                <span className="block text-[9px] tracking-[0.25em] text-slate-400 uppercase -mt-1 font-bold">Growth & Marketing</span>
-              </div>
+          {/* Logo y título del proyecto */}
+          <div className="flex items-center space-x-3 cursor-pointer" onClick={irAlInicio}>
+            <div className="w-9 h-9 rounded-lg bg-[#B8975B] flex items-center justify-center font-black text-black text-sm">
+              KC
             </div>
-
-            {/* Menú Desktop */}
-            <nav className="hidden md:flex items-center space-x-8 text-xs uppercase tracking-widest font-bold text-slate-300">
-              <a href="#diagnostico" className="hover:text-[#B8975B] transition-colors">Diagnóstico</a>
-              <a href="#soluciones" className="hover:text-[#B8975B] transition-colors">Soluciones</a>
-              <a href="#instagram" className="hover:text-[#B8975B] transition-colors">Instagram</a>
-              <a href="#proceso" className="hover:text-[#B8975B] transition-colors">Metodología</a>
-              <a href="#faq" className="hover:text-[#B8975B] transition-colors">FAQ</a>
-            </nav>
-
-            {/* CTA WhatsApp Desktop */}
-            <div className="hidden md:flex items-center space-x-4">
-              <a
-                href={getWhatsAppLink()}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center justify-center px-5 py-2.5 text-xs uppercase tracking-widest font-black rounded-xl text-black bg-[#B8975B] hover:bg-[#a3834d] transition-all shadow-lg shadow-[#B8975B]/20 transform hover:-translate-y-0.5"
-              >
-                <Calendar className="w-4 h-4 mr-2" />
-                Agendar Sesión
-              </a>
-            </div>
-
-            {/* Botón Menú Mobile */}
-            <div className="md:hidden">
-              <button
-                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                className="p-2 rounded-lg text-slate-300 hover:text-[#B8975B] hover:bg-slate-800"
-              >
-                {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-              </button>
+            <div>
+              <span className="text-lg font-black text-white">{siteConfig.project.title}</span>
+              <span className="block text-[10px] text-slate-400 uppercase tracking-wider">{siteConfig.project.course}</span>
             </div>
           </div>
 
-          {/* Menú Móvil Desplegable */}
-          {mobileMenuOpen && (
-            <div className="md:hidden border-b border-slate-800 bg-[#16181e] px-6 pt-3 pb-6 space-y-3 w-full">
-              <a href="#diagnostico" onClick={() => setMobileMenuOpen(false)} className="block px-3 py-2 text-sm font-semibold text-slate-300 hover:text-[#B8975B]">Diagnóstico</a>
-              <a href="#soluciones" onClick={() => setMobileMenuOpen(false)} className="block px-3 py-2 text-sm font-semibold text-slate-300 hover:text-[#B8975B]">Soluciones</a>
-              <a href="#instagram" onClick={() => setMobileMenuOpen(false)} className="block px-3 py-2 text-sm font-semibold text-slate-300 hover:text-[#B8975B]">Instagram</a>
-              <a href="#proceso" onClick={() => setMobileMenuOpen(false)} className="block px-3 py-2 text-sm font-semibold text-slate-300 hover:text-[#B8975B]">Metodología</a>
-              <a href="#faq" onClick={() => setMobileMenuOpen(false)} className="block px-3 py-2 text-sm font-semibold text-slate-300 hover:text-[#B8975B]">FAQ</a>
-              <a
-                href={getWhatsAppLink()}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => setMobileMenuOpen(false)}
-                className="block w-full text-center mt-4 px-5 py-3 text-xs uppercase tracking-widest font-black rounded-xl text-black bg-[#B8975B]"
-              >
-                Agendar por WhatsApp 🚀
-              </a>
+          {/* Enlaces de navegación para computadora */}
+          {/* FUNCIONAMIENTO DE ANCLAS (#): Al usar href="#portafolio", el navegador busca
+              la etiqueta <section id="portafolio"> y desliza la pantalla hasta esa sección. */}
+          <nav className="hidden md:flex items-center space-x-7 text-xs uppercase tracking-wider font-bold text-slate-300">
+            <a href="#portafolio" className="hover:text-[#B8975B] transition-colors">1. Portafolio</a>
+            <a href="#incremento" className="hover:text-[#B8975B] transition-colors">2. Incremento</a>
+            <a href="#codigo" className="hover:text-[#B8975B] transition-colors">3. Código .ZIP</a>
+            <a href="#repositorio" className="hover:text-[#B8975B] transition-colors">4. GitHub</a>
+          </nav>
+
+          {/* Botón hamburguesa para celular */}
+          <button
+            onClick={() => setMenuAbierto(!menuAbierto)}
+            aria-label="Menú"
+            className="md:hidden p-2 text-slate-300 hover:text-[#B8975B]"
+          >
+            {menuAbierto ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          </button>
+        </div>
+
+        {/* Menú desplegable cuando se abre en celular */}
+        {menuAbierto && (
+          <div className="md:hidden border-b border-slate-800 bg-[#16181e] px-6 py-4 space-y-2">
+            <a href="#portafolio" onClick={() => setMenuAbierto(false)} className="block py-2 text-sm text-slate-300">1. Portafolio PDF</a>
+            <a href="#incremento" onClick={() => setMenuAbierto(false)} className="block py-2 text-sm text-slate-300">2. Incremento Web</a>
+            <a href="#codigo" onClick={() => setMenuAbierto(false)} className="block py-2 text-sm text-slate-300">3. Código .ZIP</a>
+            <a href="#repositorio" onClick={() => setMenuAbierto(false)} className="block py-2 text-sm text-slate-300">4. Repositorios GitHub</a>
+          </div>
+        )}
+      </header>
+
+      {/* PORTADA / TÍTULO PRINCIPAL */}
+      <section className="py-16 px-6 text-center max-w-3xl mx-auto">
+        <h1 className="text-3xl sm:text-5xl font-black text-white tracking-tight mb-3">
+          {siteConfig.project.title}
+        </h1>
+        <p className="text-slate-400 text-sm sm:text-base">
+          {siteConfig.project.subtitle}
+        </p>
+      </section>
+
+      {/* SECCIÓN 1: PORTAFOLIO DE ACTIVIDADES (PDFs) */}
+      <section id="portafolio" className="py-16 bg-[#F7F5F0] text-slate-900 px-6">
+        <div className="max-w-6xl mx-auto">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+            <div>
+              <span className="text-xs font-bold uppercase tracking-widest text-[#8C6D37]">01 • Documentación</span>
+              <h2 className="text-2xl sm:text-3xl font-black text-slate-900">Portafolio de Actividades</h2>
             </div>
-          )}
-        </header>
 
-        {/* SECCIÓN HERO LIMPIA Y ULTRA PROFESIONAL */}
-                <section className="relative pt-28 pb-32 md:pt-40 md:pb-48 px-6 sm:px-12 lg:px-16 w-full text-center bg-[#111317] overflow-hidden">
+            {/* Botones para filtrar por unidad */}
+            <div className="flex flex-wrap gap-2">
+              {siteConfig.pdfCategories.map((categoria) => {
+                const esActiva = unidadActiva === categoria.id;
+                return (
+                  <button
+                    key={categoria.id}
+                    onClick={() => setUnidadActiva(categoria.id)}
+                    className={`px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                      esActiva
+                        ? 'bg-[#111317] text-[#B8975B]'
+                        : 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-100'
+                    }`}
+                  >
+                    {categoria.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
-                  {/* Resplandor decorativo central sutil */}
-                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-[#B8975B]/8 rounded-full blur-[160px] pointer-events-none"></div>
-
-                  <div className="max-w-4xl mx-auto flex flex-col items-center relative z-10">
-
-                    <div className="inline-flex items-center space-x-2 px-4 py-2 rounded-full bg-[#B8975B]/10 border border-[#B8975B]/30 text-[#B8975B] text-xs font-bold tracking-[0.25em] uppercase mb-8 shadow-sm">
-                      <Sparkles className="w-4 h-4 text-[#B8975B]" />
-                      <span>{siteConfig.hero.badge}</span>
-                    </div>
-
-                    <h1 className="text-4xl sm:text-6xl md:text-7xl font-black tracking-tight leading-[1.1] mb-8 text-white">
-                      {siteConfig.hero.titleLine1} <br />
-                      <span className="bg-gradient-to-r from-[#B8975B] via-[#E2C384] to-[#B8975B] bg-clip-text text-transparent">
-                        {siteConfig.hero.titleHighlight}
-                      </span>
-                    </h1>
-
-                    <p className="max-w-2xl mx-auto text-base sm:text-lg text-slate-300 font-normal leading-relaxed mb-12">
-                      {siteConfig.hero.description}
-                    </p>
-
-                    <div className="mt-3 flex flex-col sm:flex-row items-center justify-center gap-4 w-full max-w-md mx-auto">
-                      <a
-                        href="#contacto"
-                        className="w-full sm:w-auto inline-flex items-center justify-center px-8 py-4 text-xs uppercase tracking-widest font-black rounded-2xl text-black bg-[#B8975B] hover:bg-[#a3834d] shadow-2xl shadow-[#B8975B]/30 transition-all transform hover:-translate-y-0.5"
-                      >
-                        {siteConfig.hero.ctaPrimaryText}
-                        <ArrowRight className="ml-2 w-4 h-4" />
-                      </a>
-                      <a
-                        href="#soluciones"
-                        className="w-full sm:w-auto inline-flex items-center justify-center px-8 py-4 text-xs uppercase tracking-widest font-bold rounded-2xl text-slate-200 bg-slate-800/80 hover:bg-slate-700 border border-slate-700 transition-colors"
-                      >
-                        {siteConfig.hero.ctaSecondaryText}
-                      </a>
-                    </div>
-
+          {/* Cuadrícula de tarjetas PDF */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {actividadesFiltradas.map((actividad) => (
+              <div
+                key={actividad.id}
+                className="bg-white rounded-2xl p-5 border border-slate-200 flex flex-col justify-between gap-4 shadow-sm"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="p-2.5 rounded-xl bg-[#F7F5F0] text-[#8C6D37] flex-shrink-0">
+                    <FileText className="w-5 h-5" />
                   </div>
-                </section>
+                  <div>
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-[#8C6D37]">
+                      {actividad.tag}
+                    </span>
+                    <h3 className="text-base font-bold text-slate-900 leading-snug mt-0.5">
+                      {actividad.titulo}
+                    </h3>
+                  </div>
+                </div>
 
-        {/* MÉTRICAS DE AUTORIDAD */}
-        <section className="bg-[#16181e] border-y border-slate-800 py-12 px-6 sm:px-12 lg:px-16">
-          <div className="max-w-6xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-            {siteConfig.metrics.map((metric, idx) => (
-              <div key={idx} className="space-y-1">
-                <div className="text-3xl sm:text-5xl font-black text-[#B8975B] tracking-tight">{metric.value}</div>
-                <div className="text-[11px] text-slate-400 font-bold uppercase tracking-widest">{metric.label}</div>
+                {/* Botones de Ver y Descargar */}
+                <div className="flex items-center gap-2 pt-3 border-t border-slate-100">
+                  {/* BOTÓN VER PDF: No descarga nada; solo guarda esta 'actividad' en el estado
+                      'pdfSeleccionado'. Al dejar de ser null, se abre la ventana modal de abajo. */}
+                  <button
+                    onClick={() => setPdfSeleccionado(actividad)}
+                    className="flex-1 py-2.5 px-3 rounded-xl font-bold text-xs text-black bg-[#B8975B] hover:bg-[#a3834d] flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>Ver PDF</span>
+                  </button>
+
+                  {/* BOTÓN DESCARGAR PDF: No usa JavaScript, usa HTML puro:
+                      1. href={actividad.pdfUrl} indica dónde está guardado el archivo (ej. en la carpeta /public).
+                      2. El atributo 'download' le ordena al navegador descargar el archivo a la computadora
+                         en lugar de abrirlo en otra pestaña. */}
+                  <a
+                    href={actividad.pdfUrl}
+                    download
+                    title="Descargar PDF"
+                    className="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700"
+                  >
+                    <Download className="w-4 h-4" />
+                  </a>
+                </div>
               </div>
             ))}
           </div>
-        </section>
+        </div>
+      </section>
 
-        {/* DIAGNÓSTICO DE DOLOR (Abre el apetito de solución) */}
-        <section id="diagnostico" className="py-24 bg-[#111317] w-full px-6 sm:px-12 lg:px-16">
-          <div className="max-w-6xl mx-auto">
-            <div className="text-left mb-16 max-w-3xl">
-              <span className="text-xs font-bold uppercase tracking-[0.2em] text-[#B8975B]">
-                {siteConfig.hero.problemsHeader}
-              </span>
-              <h2 className="text-3xl sm:text-5xl font-extrabold text-white mt-3 mb-4 tracking-tight">
-                {siteConfig.hero.problemsTitle}
-              </h2>
-              <p className="text-slate-400 text-sm sm:text-base leading-relaxed">
-                {siteConfig.hero.problemsSubtitle}
-              </p>
+      {/* SECCIÓN 2: VISTA PREVIA DE LA PÁGINA EN VERCEL */}
+      <section id="incremento" className="py-16 px-6 border-t border-slate-800">
+        <div className="max-w-6xl mx-auto">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+            <div>
+              <span className="text-xs font-bold uppercase tracking-widest text-[#B8975B]">02 • Sistema Funcional</span>
+              <h2 className="text-2xl sm:text-3xl font-black text-white">Kaffa Coffee Shop (Vercel)</h2>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 pt-8 border-t border-[#B8975B]/30">
-              {siteConfig.hero.highlights.map((item, idx) => (
-                <div key={idx} className="p-8 rounded-3xl bg-[#16181e] border border-slate-800 hover:border-[#B8975B]/50 transition-all group shadow-lg">
-                  <div className="w-12 h-12 rounded-2xl bg-[#B8975B]/10 flex items-center justify-center text-[#B8975B] mb-6 group-hover:bg-[#B8975B] group-hover:text-black transition-colors">
-                    <IconMap name={item.icon} className="w-6 h-6" />
-                  </div>
-                  <h3 className="text-xl font-bold text-white mb-3">{item.title}</h3>
-                  <p className="text-sm text-slate-400 leading-relaxed">{item.desc}</p>
-                </div>
-              ))}
-            </div>
+            {/* ENLACE EXTERNO: target="_blank" abre la web en una pestaña nueva del navegador.
+                rel="noopener noreferrer" es una medida de seguridad estándar al abrir enlaces externos. */}
+            <a
+              href={siteConfig.vercelUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center px-5 py-3 text-xs uppercase tracking-wider font-black rounded-xl text-black bg-[#B8975B] hover:bg-[#a3834d] transition-colors"
+            >
+              <ExternalLink className="w-4 h-4 mr-2" />
+              Abrir en pestaña nueva
+            </a>
+          </div>
 
-            <div className="mt-12 p-8 rounded-3xl bg-[#16181e] border border-[#B8975B]/40 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-2xl">
-              <p className="text-base font-semibold text-[#B8975B]">
-                {siteConfig.hero.problemsFooter}
-              </p>
-              <a href="#contacto" className="text-xs font-black uppercase tracking-widest text-black bg-[#B8975B] px-6 py-3.5 rounded-xl hover:bg-[#a3834d] transition-all whitespace-nowrap shadow-lg shadow-[#B8975B]/20">
-                Solucionar Ahora
-              </a>
+          {/* Marco (iframe) que muestra la web externa dentro de esta página */}
+          {/* CÓMO FUNCIONA LA VISTA PREVIA EXTERNA:
+              La etiqueta HTML <iframe> crea una "ventana dentro de otra ventana".
+              - src={siteConfig.vercelUrl}: carga la página real alojada en Vercel dentro de este recuadro.
+              - loading="lazy": optimiza la página haciendo que el iframe cargue solo cuando el usuario
+                baja hasta esta sección, evitando que la página inicial se vuelva lenta. */}
+          <div className="rounded-2xl overflow-hidden border border-slate-800 bg-[#16181e]">
+            <div className="px-4 py-2.5 bg-[#1c1f26] border-b border-slate-800 flex items-center gap-2 text-xs text-slate-400">
+              <Globe className="w-3.5 h-3.5 text-[#B8975B]" />
+              <span className="truncate">{siteConfig.vercelUrl}</span>
+            </div>
+            <div className="w-full h-[520px] bg-white">
+              <iframe
+                src={siteConfig.vercelUrl}
+                title="Kaffa Coffee Shop - Incremento"
+                className="w-full h-full border-0"
+                loading="lazy"
+              />
             </div>
           </div>
-        </section>
+        </div>
+      </section>
 
-        {/* SOLUCIONES (Fondo elegante crema/claro para contraste visual y conversión) */}
-        <section id="soluciones" className="py-24 bg-[#F7F5F0] text-slate-900 w-full px-6 sm:px-12 lg:px-16">
-          <div className="max-w-7xl mx-auto">
-            <div className="text-center max-w-3xl mx-auto mb-16">
-              <span className="text-xs font-extrabold uppercase tracking-[0.2em] text-[#8C6D37] bg-[#EBE7DF] px-4 py-1.5 rounded-full shadow-sm">
-                PORTAFOLIO DE SERVICIOS
-              </span>
-              <h2 className="text-3xl sm:text-5xl font-black text-slate-900 mt-4 mb-4 tracking-tight">
-                Soluciones diseñadas para escalar tus ventas
-              </h2>
-              <p className="text-slate-600 text-base sm:text-lg">
-                Estrategias a la medida creadas para dominar tu sector y maximizar tu retorno de inversión.
-              </p>
+      {/* SECCIONES 3 Y 4: DESCARGA ZIP Y EXPLORADOR DE GITHUB */}
+      <section id="repositorio" className="py-16 bg-[#16181e] px-6 border-t border-slate-800">
+        <div className="max-w-6xl mx-auto space-y-10">
+
+          {/* Sección 3: Botones de descarga .ZIP */}
+          <div
+            id="codigo"
+            className="p-6 rounded-2xl bg-[#111317] border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-4"
+          >
+            <div>
+              <span className="text-xs font-bold uppercase tracking-widest text-[#B8975B]">03 • Código Fuente</span>
+              <h3 className="text-xl font-black text-white mt-0.5">Paquetes Completos del Proyecto (.ZIP)</h3>
             </div>
 
-            {/* Filtros de categoría */}
-            <div className="flex flex-wrap justify-center gap-3 mb-14">
-              {siteConfig.categories.map(cat => (
-                <button
-                  key={cat.id}
-                  onClick={() => setActiveCategory(cat.id)}
-                  className={`px-6 py-3 rounded-full text-xs uppercase tracking-wider font-extrabold transition-all shadow-sm ${
-                    activeCategory === cat.id
-                      ? 'bg-[#111317] text-[#B8975B] shadow-lg scale-105'
-                      : 'bg-white text-slate-700 hover:bg-slate-200 border border-slate-300'
-                  }`}
+            <div className="flex flex-wrap gap-3">
+              {siteConfig.repositories.map((repo) => {
+                // CÓMO SE DESCARGA EL .ZIP: GitHub tiene una ruta pública estándar para comprimir
+                // cualquier repositorio público: /archive/refs/heads/[nombre-rama].zip
+                // Al poner esa URL en un enlace <a>, GitHub empaqueta y descarga el código automáticamente.
+                const urlZip = `https://github.com/${repo.owner}/${repo.repo}/archive/refs/heads/${repo.branch}.zip`;
+                return (
+                  <a
+                    key={repo.id}
+                    href={urlZip}
+                    className="inline-flex items-center px-4 py-3 text-xs uppercase tracking-wider font-black rounded-xl text-black bg-[#B8975B] hover:bg-[#a3834d] transition-colors"
+                  >
+                    <Archive className="w-4 h-4 mr-2" />
+                    {repo.label} (.ZIP)
+                  </a>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Sección 4: Explorador de carpetas y archivos de GitHub */}
+          <div>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+              <div>
+                <span className="text-xs font-bold uppercase tracking-widest text-[#B8975B]">04 • Trazabilidad</span>
+                <h2 className="text-2xl sm:text-3xl font-black text-white">Repositorios en GitHub</h2>
+              </div>
+
+              {/* Pestañas para elegir Frontend o Backend */}
+              {/* CÓMO FUNCIONA EL CAMBIO DE REPOSITORIO:
+                  Recorremos 'siteConfig.repositories' con .map(). Al hacer clic en un botón,
+                  llamamos a 'cambiarRepositorio(indice)', lo que actualiza 'indiceRepo' y reinicia
+                  'rutaCarpeta' a ''. Eso dispara automáticamente el useEffect para traer el nuevo repo. */}
+              <div className="flex flex-wrap items-center gap-2">
+                {siteConfig.repositories.map((repo, indice) => {
+                  const estaSeleccionado = indiceRepo === indice;
+                  return (
+                    <button
+                      key={repo.id}
+                      onClick={() => cambiarRepositorio(indice)}
+                      className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        estaSeleccionado
+                          ? 'bg-[#B8975B] text-black'
+                          : 'bg-[#111317] text-slate-300 border border-slate-700 hover:border-slate-500'
+                      }`}
+                    >
+                      {repo.label}
+                    </button>
+                  );
+                })}
+
+                <a
+                  href={urlGitHub}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center px-4 py-2.5 text-xs font-bold rounded-xl text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors"
                 >
-                  {cat.label}
-                </button>
-              ))}
+                  <GitBranch className="w-4 h-4 mr-1.5 text-[#B8975B]" />
+                  GitHub ↗
+                </a>
+              </div>
             </div>
 
-            {/* Grid de servicios optimizado */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {filteredServicios.map(item => (
-                <div key={item.id} className="bg-white rounded-3xl overflow-hidden border border-slate-200/90 shadow-md hover:shadow-2xl transition-all duration-300 flex flex-col justify-between group">
-                  <div>
-                    <div className="relative h-52 w-full overflow-hidden bg-slate-100">
-                      <img src={item.imagen} alt={item.nombre} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                      <span className="absolute top-4 right-4 bg-[#111317]/90 text-[#B8975B] text-xs font-bold px-3.5 py-1.5 rounded-full shadow-md">
-                        {item.etiqueta}
+            {/* Caja del explorador de archivos */}
+            <div className="rounded-2xl bg-[#111317] border border-slate-800 overflow-hidden">
+
+              {/* Barra superior de ruta (Breadcrumbs) */}
+              {/* CÓMO FUNCIONA LA BARRA DE RUTA INTERACTIVA:
+                  Si 'rutaCarpeta' es "src/components/ui", .split('/') lo convierte en el arreglo
+                  ["src", "components", "ui"]. Luego usamos .slice(0, index + 1).join('/') para
+                  reconstruir la ruta hasta ese punto si el usuario hace clic en una carpeta intermedia. */}
+              <div className="px-5 py-3 bg-[#1c1f26] border-b border-slate-800 flex items-center justify-between text-xs font-mono">
+                <div className="flex items-center gap-1.5">
+                  <button onClick={() => setRutaCarpeta('')} className="text-[#B8975B] font-bold hover:underline cursor-pointer">
+                    {nombreRepo}
+                  </button>
+
+                  {/* Si estamos dentro de subcarpetas, mostramos cada nivel */}
+                  {rutaCarpeta !== '' &&
+                    rutaCarpeta.split('/').map((carpeta, index, arreglo) => {
+                      const rutaAcumulada = arreglo.slice(0, index + 1).join('/');
+                      return (
+                        <React.Fragment key={rutaAcumulada}>
+                          <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                          <button onClick={() => setRutaCarpeta(rutaAcumulada)} className="text-slate-300 hover:text-white cursor-pointer">
+                            {carpeta}
+                          </button>
+                        </React.Fragment>
+                      );
+                    })}
+                </div>
+
+                {/* Botón "Atrás" solo aparece si no estamos en la carpeta raíz */}
+                {rutaCarpeta !== '' && (
+                  <button onClick={regresarCarpetaAnterior} className="flex items-center gap-1 text-slate-300 hover:text-[#B8975B] cursor-pointer">
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    <span>Atrás</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Lista de carpetas y archivos */}
+              {/* CÓMO SE DIBUJA EL CONTENIDO DEL REPOSITORIO:
+                  1. Si 'cargandoRepo' es true, muestra el mensaje de espera.
+                  2. Si terminó de cargar pero hubo fallo ('errorRepo'), muestra el error.
+                  3. Si todo salió bien, recorre 'archivosRepo' con .map() y distingue cada elemento:
+                     - Si item.type === 'dir' (es carpeta): dibuja un ícono de carpeta y al darle clic
+                       actualiza 'rutaCarpeta' con la ruta de esa carpeta (item.path), lo que vuelve a
+                       ejecutar el useEffect para entrar en ella.
+                     - Si no es carpeta (es archivo): dibuja un ícono de código y un enlace <a> hacia
+                       'item.html_url' para abrir el código fuente directamente en GitHub. */}
+              <div className="divide-y divide-slate-800/60">
+                {cargandoRepo && (
+                  <div className="p-8 text-center text-sm text-slate-400">Cargando archivos de {nombreRepo}...</div>
+                )}
+
+                {!cargandoRepo && errorRepo && (
+                  <div className="p-8 text-center text-sm text-slate-400">{errorRepo}</div>
+                )}
+
+                {!cargandoRepo && !errorRepo && archivosRepo.map((item) => {
+                  // GitHub entrega el peso en bytes; dividimos entre 1024 para mostrarlo en Kilobytes (KB)
+                  const pesoEnKB = (item.size / 1024).toFixed(1);
+                  return (
+                    <div key={item.sha} className="px-5 py-3 flex items-center justify-between hover:bg-[#16181e]">
+                      {item.type === 'dir' ? (
+                        // Si es carpeta, al hacer clic entramos a ella
+                        <button
+                          onClick={() => setRutaCarpeta(item.path)}
+                          className="flex items-center gap-2.5 text-sm font-medium text-white hover:text-[#B8975B] cursor-pointer"
+                        >
+                          <Folder className="w-4 h-4 text-[#B8975B]" />
+                          <span>{item.name}</span>
+                        </button>
+                      ) : (
+                        // Si es archivo, al hacer clic lo abre en GitHub
+                        <a
+                          href={item.html_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2.5 text-sm text-slate-300 hover:text-white"
+                        >
+                          <FileCode className="w-4 h-4 text-slate-500" />
+                          <span>{item.name}</span>
+                        </a>
+                      )}
+
+                      <span className="text-xs text-slate-500 font-mono">
+                        {item.type === 'dir' ? 'Carpeta' : `${pesoEnKB} KB`}
                       </span>
                     </div>
-
-                    <div className="p-8">
-                      <h3 className="text-xl font-bold text-slate-900 mb-3">{item.nombre}</h3>
-                      <p className="text-slate-600 text-sm leading-relaxed mb-6">{item.descripcion}</p>
-
-                      <div className="space-y-2 pt-4 border-t border-slate-100">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Entregables clave:</span>
-                        {item.entregables.map((entregable, i) => (
-                          <div key={i} className="flex items-center text-xs text-slate-700 font-semibold">
-                            <Check className="w-4 h-4 text-[#8C6D37] mr-2 flex-shrink-0" />
-                            <span>{entregable}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="px-8 pb-8">
-                    <a
-                      href={getWhatsAppLink(`¡Hola B2 Creative! Me interesa cotizar y conocer más sobre la solución: ${item.nombre}`)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="w-full py-4 px-4 rounded-xl font-black text-xs uppercase tracking-widest text-black bg-[#B8975B] hover:bg-[#a3834d] flex items-center justify-center space-x-2 transition-all shadow-md group-hover:shadow-lg"
-                    >
-                      <Calendar className="w-4 h-4" />
-                      <span>Cotizar solución</span>
-                    </a>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* SECCIÓN DEDICADA A INSTAGRAM (Tráfico directo al perfil) */}
-        <section id="instagram" className="py-24 bg-[#16181e] text-white w-full px-6 sm:px-12 lg:px-16 border-t border-slate-800">
-          <div className="max-w-5xl mx-auto rounded-3xl bg-gradient-to-br from-[#1c1f26] to-[#12141a] p-10 sm:p-16 border border-[#B8975B]/40 shadow-2xl text-center space-y-8 relative overflow-hidden">
-
-            <div className="absolute -top-24 -right-24 w-72 h-72 bg-pink-500/10 rounded-full blur-3xl pointer-events-none"></div>
-
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-yellow-500 via-pink-500 to-purple-600 mx-auto flex items-center justify-center text-white shadow-xl shadow-pink-600/20">
-              <InstagramIcon className="w-8 h-8" />
-            </div>
-
-            <div className="space-y-3 max-w-2xl mx-auto">
-              <span className="text-xs font-black uppercase tracking-[0.25em] text-[#B8975B]">
-                CONECTA CON NUESTRA COMUNIDAD
-              </span>
-              <h2 className="text-3xl sm:text-5xl font-black tracking-tight text-white">
-                Mira nuestros casos diarios en <span className="text-[#B8975B]">Instagram</span>
-              </h2>
-              <p className="text-slate-300 text-sm sm:text-base leading-relaxed">
-                Publicamos detrás de cámaras, análisis de marcas y estrategias prácticas que puedes implementar hoy mismo en tu negocio.
-              </p>
-            </div>
-
-            <div className="pt-2">
-              <a
-                href={siteConfig.brand.instagramUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center space-x-3 px-8 py-4 rounded-2xl text-xs font-black uppercase tracking-widest text-white bg-gradient-to-r from-purple-600 via-pink-600 to-amber-500 hover:opacity-95 shadow-2xl shadow-pink-600/30 transition-all transform hover:-translate-y-0.5"
-              >
-                <InstagramIcon className="w-5 h-5" />
-                <span>Síguenos en {siteConfig.brand.instagramHandle} 🚀</span>
-              </a>
-            </div>
-
-          </div>
-        </section>
-
-        {/* OBJETIVO / BENEFICIOS CLAVE */}
-        <section id="objetivo" className="py-24 bg-[#111317] text-white w-full px-6 sm:px-12 lg:px-16 border-t border-slate-800">
-          <div className="max-w-6xl mx-auto">
-            <div className="text-left mb-16 max-w-3xl">
-              <span className="text-xs font-bold uppercase tracking-[0.2em] text-[#B8975B]">
-                {siteConfig.whyUs.badge}
-              </span>
-              <h2 className="text-3xl sm:text-5xl font-black text-white mt-3 tracking-tight">
-                {siteConfig.whyUs.title}
-              </h2>
-              <p className="text-slate-400 text-sm sm:text-base mt-3">
-                {siteConfig.whyUs.subtitle}
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 pt-8 border-t border-[#B8975B]/30">
-              {siteConfig.whyUs.cards.map((card, idx) => (
-                <div key={idx} className="p-8 rounded-3xl bg-[#16181e] border border-slate-800 hover:border-[#B8975B]/40 transition-colors shadow-lg">
-                  <div className="w-12 h-12 rounded-2xl bg-[#B8975B]/10 flex items-center justify-center text-[#B8975B] mb-6">
-                    <IconMap name={card.icon} className="w-6 h-6" />
-                  </div>
-                  <h3 className="text-2xl font-bold text-white mb-3">{card.title}</h3>
-                  <p className="text-slate-400 text-sm leading-relaxed">{card.desc}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* METODOLOGÍA */}
-        <section id="proceso" className="py-24 bg-[#F7F5F0] text-slate-900 w-full px-6 sm:px-12 lg:px-16">
-          <div className="max-w-6xl mx-auto">
-            <div className="text-left mb-16 max-w-3xl">
-              <span className="text-xs font-extrabold uppercase tracking-[0.2em] text-[#8C6D37]">
-                {siteConfig.steps.badge}
-              </span>
-              <h2 className="text-3xl sm:text-5xl font-black text-slate-900 mt-3 tracking-tight">
-                {siteConfig.steps.title}
-              </h2>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 pt-8 border-t border-slate-300">
-              {siteConfig.steps.list.map((stepItem, idx) => (
-                <div key={idx} className="p-8 rounded-3xl bg-white border border-slate-200 shadow-md space-y-4">
-                  <span className="text-6xl font-black text-[#B8975B] block">
-                    {stepItem.step}
-                  </span>
-                  <h3 className="text-2xl font-bold text-slate-900">{stepItem.title}</h3>
-                  <p className="text-slate-600 text-sm leading-relaxed">{stepItem.desc}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* PREGUNTAS FRECUENTES (FAQ) */}
-        <section id="faq" className="py-24 bg-[#111317] border-t border-slate-800 text-white w-full px-6 sm:px-12 lg:px-16">
-          <div className="max-w-4xl mx-auto">
-            <div className="text-center mb-16">
-              <span className="text-xs font-bold uppercase tracking-[0.2em] text-[#B8975B]">RESOLVEMOS TUS DUDAS</span>
-              <h2 className="text-3xl sm:text-5xl font-black text-white mt-3 tracking-tight">Preguntas Frecuentes</h2>
-            </div>
-
-            <div className="space-y-4">
-              {siteConfig.faqs.map((faq, idx) => (
-                <div key={idx} className="rounded-2xl bg-[#16181e] border border-slate-800 overflow-hidden shadow-md">
-                  <button
-                    onClick={() => setOpenFaq(openFaq === idx ? null : idx)}
-                    className="w-full p-6 text-left flex justify-between items-center font-bold text-base sm:text-lg text-white hover:text-[#B8975B] transition-colors"
-                  >
-                    <span>{faq.q}</span>
-                    <ChevronDown className={`w-5 h-5 text-[#B8975B] transform transition-transform duration-300 ${openFaq === idx ? 'rotate-180' : ''}`} />
-                  </button>
-                  {openFaq === idx && (
-                    <div className="px-6 pb-6 text-sm text-slate-400 leading-relaxed border-t border-slate-800/60 pt-4">
-                      {faq.a}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* BANNER PROMOCIONAL DE CIERRE */}
-        {siteConfig.promo.active && (
-          <section className="py-16 bg-[#16181e] text-white w-full px-6 sm:px-12 lg:px-16 border-t border-slate-800">
-            <div className="max-w-5xl mx-auto rounded-3xl bg-[#181a20] p-8 sm:p-14 border border-[#B8975B]/40 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-8">
-              <div className="text-left max-w-2xl">
-                <span className="bg-[#B8975B] text-black text-xs font-black px-3.5 py-1.5 rounded-full uppercase tracking-widest shadow-sm">
-                  {siteConfig.promo.badge}
-                </span>
-                <h3 className="text-3xl sm:text-4xl font-black mt-4 mb-3 text-white tracking-tight">
-                  {siteConfig.promo.title}
-                </h3>
-                <p className="text-slate-300 text-sm sm:text-base leading-relaxed">
-                  {siteConfig.promo.subtitle}
-                </p>
-              </div>
-              <a
-                href={getWhatsAppLink()}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="whitespace-nowrap px-8 py-4 text-xs font-black uppercase tracking-widest rounded-2xl bg-[#B8975B] text-black hover:bg-[#a3834d] shadow-2xl shadow-[#B8975B]/30 transition-all transform hover:-translate-y-0.5"
-              >
-                {siteConfig.promo.buttonText}
-              </a>
-            </div>
-          </section>
-        )}
-
-        {/* SECCIÓN CONTACTO DIRECTO Y FORMULARIO DE CAPTURA */}
-        <section id="contacto" className="py-24 bg-[#0c0d10] border-t border-slate-800 text-slate-100 w-full px-6 sm:px-12 lg:px-16">
-          <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
-
-            <div className="space-y-6">
-              <div>
-                <span className="text-xs font-bold uppercase tracking-[0.2em] text-[#B8975B]">SIGUIENTE PASO COMERCIAL</span>
-                <h2 className="text-3xl sm:text-5xl font-black text-white mt-3 mb-4 tracking-tight">Hablemos de los objetivos de tu marca.</h2>
-                <p className="text-slate-400 text-sm sm:text-base leading-relaxed">
-                  Agendemos una reunión diagnóstica para explicarte a detalle cómo optimizar tu visibilidad y multiplicar tus prospectos en ventas. Cada día sin presencia fuerte es terreno ganado por tu competencia.
-                </p>
-              </div>
-
-              <div className="space-y-4 pt-4">
-                <div className="flex items-start space-x-4 p-5 rounded-2xl bg-[#16181e] border border-slate-800 shadow-md">
-                  <PhoneCall className="w-6 h-6 text-[#B8975B] flex-shrink-0 mt-1" />
-                  <div>
-                    <h4 className="font-bold text-white text-sm">WhatsApp Directo</h4>
-                    <p className="text-xs text-slate-400 mt-0.5">{siteConfig.brand.phoneDisplay}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-start space-x-4 p-5 rounded-2xl bg-[#16181e] border border-slate-800 shadow-md">
-                  <Mail className="w-6 h-6 text-[#B8975B] flex-shrink-0 mt-1" />
-                  <div>
-                    <h4 className="font-bold text-white text-sm">Correo Electrónico</h4>
-                    <p className="text-xs text-slate-400 mt-0.5">{siteConfig.brand.email}</p>
-                  </div>
-                </div>
+                  );
+                })}
               </div>
             </div>
-
-            {/* Formulario */}
-            <div className="p-8 sm:p-10 rounded-3xl bg-[#16181e] border border-slate-800 shadow-2xl">
-              <h3 className="text-2xl font-bold text-white mb-2">Solicita tu diagnóstico gratuito</h3>
-              <p className="text-xs text-slate-400 mb-6">Al dar clic en enviar, se abrirá tu WhatsApp con el mensaje estructurado automáticamente.</p>
-
-              <form onSubmit={handleFormSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2">Nombre o Negocio</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ej. Carlos / Empresa ABC"
-                    value={formData.nombre}
-                    onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
-                    className="w-full px-4 py-3.5 rounded-xl bg-[#111317] border border-slate-800 text-white focus:outline-none focus:border-[#B8975B] text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2">Teléfono / WhatsApp</label>
-                  <input
-                    type="tel"
-                    required
-                    placeholder="Ej. 33 1262 0089"
-                    value={formData.telefono}
-                    onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
-                    className="w-full px-4 py-3.5 rounded-xl bg-[#111317] border border-slate-800 text-white focus:outline-none focus:border-[#B8975B] text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2">¿Cuál es tu principal reto actual?</label>
-                  <textarea
-                    rows="3"
-                    required
-                    placeholder="Ej. Necesito captar más clientes y mejorar mis anuncios..."
-                    value={formData.mensaje}
-                    onChange={(e) => setFormData({ ...formData, mensaje: e.target.value })}
-                    className="w-full px-4 py-3.5 rounded-xl bg-[#111317] border border-slate-800 text-white focus:outline-none focus:border-[#B8975B] text-sm"
-                  ></textarea>
-                </div>
-                <button
-                  type="submit"
-                  className="w-full py-4 px-6 rounded-xl font-black text-xs uppercase tracking-widest text-black bg-[#B8975B] hover:bg-[#a3834d] shadow-xl shadow-[#B8975B]/20 flex items-center justify-center space-x-2 transition-all cursor-pointer"
-                >
-                  <span>Enviar mensaje por WhatsApp</span>
-                  <Send className="w-4 h-4" />
-                </button>
-              </form>
-            </div>
-
           </div>
-        </section>
+        </div>
+      </section>
 
-      </div>
-
-      <footer className="relative z-10 border-t border-slate-800 bg-[#08090b] py-8 px-6 text-center text-xs text-slate-500 w-full">
-        <p>© {new Date().getFullYear()} {siteConfig.brand.name}{siteConfig.brand.nameHighlight} - Agencia de Growth & Marketing. Todos los derechos reservados.</p>
+      {/* PIE DE PÁGINA */}
+      <footer className="border-t border-slate-800 bg-[#08090b] py-6 px-6 text-center text-xs text-slate-500">
+        {siteConfig.project.title} • {siteConfig.project.course}
       </footer>
+
+      {/* VENTANA EMERGENTE (MODAL) PARA VER EL PDF */}
+      {/* CÓMO FUNCIONA EL VISOR MODAL:
+          1. Renderizado condicional: {pdfSeleccionado !== null && (...)} significa que todo este bloque
+             solo existe en la página si hay un PDF seleccionado.
+          2. 'fixed inset-0 z-50': fija el contenedor sobre toda la pantalla (top:0, bottom:0, left:0, right:0)
+             y lo coloca por encima de todo lo demás (z-index: 50). */}
+      {pdfSeleccionado !== null && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#16181e] border border-slate-700 rounded-2xl w-full max-w-5xl h-[88vh] flex flex-col overflow-hidden">
+
+            {/* Encabezado de la ventana modal */}
+            <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between gap-4">
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#B8975B]">{pdfSeleccionado.tag}</span>
+                <h3 className="text-base font-bold text-white">{pdfSeleccionado.titulo}</h3>
+              </div>
+              <div className="flex items-center gap-2">
+                {/* Botón de descarga directa dentro del modal usando el mismo atributo HTML 'download' */}
+                <a
+                  href={pdfSeleccionado.pdfUrl}
+                  download
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold bg-[#B8975B] text-black hover:bg-[#a3834d]"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Descargar</span>
+                </a>
+                {/* Botón X: vuelve a poner 'pdfSeleccionado' en null para cerrar y ocultar esta ventana */}
+                <button
+                  onClick={() => setPdfSeleccionado(null)}
+                  className="p-2 rounded-lg bg-slate-800 text-slate-300 hover:text-white cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Visor del documento PDF */}
+            {/* Al pasar la ruta de un archivo .pdf al atributo 'src' de un <iframe>, los navegadores
+                modernos activan automáticamente su lector de PDF integrado para mostrar las páginas. */}
+            <iframe src={pdfSeleccionado.pdfUrl} title={pdfSeleccionado.titulo} className="w-full flex-1 border-0 bg-slate-900" />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
