@@ -328,6 +328,15 @@ export default function App() {
             {/* ENLACE EXTERNO: target="_blank" abre la web en una pestaña nueva del navegador.
                 rel="noopener noreferrer" es una medida de seguridad estándar al abrir enlaces externos. */}
             <a
+              href={siteConfig.drivelUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex ml-100 items-center justify-center px-5 py-3 text-xs uppercase tracking-wider font-black rounded-xl text-black bg-[#B8975B] hover:bg-[#a3834d] transition-colors"
+            >
+              <ExternalLink className="w-4 h-4 mr-2" />
+              Demostración en video
+            </a>
+            <a
               href={siteConfig.vercelUrl}
               target="_blank"
               rel="noopener noreferrer"

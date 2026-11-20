@@ -58,6 +58,7 @@ export const siteConfig = {
 
   // 2. INCREMENTO DEL SISTEMA (VERCEL)
   vercelUrl: "https://kaffa-coffee-shop.vercel.app/",
+  drivelUrl: "https://drive.google.com/file/d/1L1SeH4BapyT2HrINRyqj8kwHpO3dYo-9/view?usp=drive_link",
 
   // 3 y 4. REPOSITORIOS GITHUB (FRONTEND Y BACKEND)
   repositories: [
