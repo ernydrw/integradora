@@ -17,7 +17,42 @@ export const siteConfig = {
       unidad: "unidad3",
       tag: "Unidad 3",
       titulo: "Actividad 1. Primera fase de desarrollo, revisión y ajuste de los Sprints",
-      pdfUrl: "/pdfs/Primera fase de desarrollo, revisión y ajuste de los Sprints.pdf"
+      pdfUrl: "/pdfs/u3-actividad-1-primera-fase-sprints.pdf"
+    },
+    {
+      id: 2,
+      unidad: "unidad3",
+      tag: "Unidad 3",
+      titulo: "Actividad 2. Segunda fase de desarrollo, revisión y ajuste de los Sprints y el backlog",
+      pdfUrl: "/pdfs/u3-actividad-2-segunda-fase-sprints-backlog.pdf"
+    },
+    {
+      id: 3,
+      unidad: "unidad3",
+      tag: "Unidad 3",
+      titulo: "Actividad 3. Tercera fase de desarrollo, revisión y ajuste de los Sprints y el backlog",
+      pdfUrl: "/pdfs/u3-actividad-3-tercera-fase-sprints-backlog.pdf"
+    },
+    {
+      id: 4,
+      unidad: "unidad3",
+      tag: "Unidad 3",
+      titulo: "Actividad integradora. Producto final U3",
+      pdfUrl: "/pdfs/u3-actividad-integradora-producto-final.pdf"
+    },
+    {
+      id: 5,
+      unidad: "unidad4",
+      tag: "Unidad 4",
+      titulo: "Actividad 1. Reunión de revisión inicial",
+      pdfUrl: "/pdfs/u4-actividad-1-reunion-revision-inicial.pdf"
+    },
+    {
+      id: 6,
+      unidad: "unidad4",
+      tag: "Unidad 4",
+      titulo: "Actividad 2. Reunión para revisión de modificaciones",
+      pdfUrl: "/pdfs/u4-actividad-2-reunion-revision-modificaciones.pdf"
     }
   ],
 
