@@ -46,6 +46,13 @@ export default function App() {
   // Guarda un mensaje de error si falla la conexión con GitHub
   const [errorRepo, setErrorRepo] = useState(null);
 
+  // Estados independientes para el segundo explorador ('siteConfig.repositories_menu')
+  const [indiceRepo2, setIndiceRepo2] = useState(0);
+  const [rutaCarpeta2, setRutaCarpeta2] = useState('');
+  const [archivosRepo2, setArchivosRepo2] = useState([]);
+  const [cargandoRepo2, setCargandoRepo2] = useState(true);
+  const [errorRepo2, setErrorRepo2] = useState(null);
+
   // =========================================================================
   // 2. DATOS DEL REPOSITORIO ACTUAL
   // =========================================================================
@@ -56,8 +63,15 @@ export default function App() {
   const nombreRepo = repoActual.repo;
   const rama = repoActual.branch;
 
+  // Obtenemos el objeto del segundo repositorio seleccionado desde siteConfig.repositories_menu
+  const repoActual2 = siteConfig.repositories_menu[indiceRepo2];
+  const propietario2 = repoActual2.owner;
+  const nombreRepo2 = repoActual2.repo;
+  const rama2 = repoActual2.branch;
+
   // Armamos la dirección web completa del repositorio
   const urlGitHub = `https://github.com/${propietario}/${nombreRepo}`;
+  const urlGitHub2 = `https://github.com/${propietario2}/${nombreRepo2}`;
 
   // =========================================================================
   // 3. FILTRADO DE ACTIVIDADES (PDFs)
@@ -94,6 +108,21 @@ export default function App() {
     partes.pop();
     // Volvemos a unir lo que queda ("src")
     setRutaCarpeta(partes.join('/'));
+  }
+
+  // Cambia el repositorio del segundo explorador ('repositories_menu') y reinicia su ruta a la raíz
+  function cambiarRepositorio2(nuevoIndice) {
+    setIndiceRepo2(nuevoIndice);
+    setRutaCarpeta2('');
+  }
+
+  // Regresa una carpeta hacia atrás en el segundo explorador de GitHub
+  function regresarCarpetaAnterior2() {
+    if (rutaCarpeta2 === '') return; // Si ya estamos en el inicio, no hace nada
+
+    const partes = rutaCarpeta2.split('/');
+    partes.pop();
+    setRutaCarpeta2(partes.join('/'));
   }
 
   // Sube la pantalla suavemente hasta arriba
@@ -171,6 +200,46 @@ export default function App() {
 
     obtenerArchivosDeGitHub();
   }, [propietario, nombreRepo, rama, rutaCarpeta]); // Se repite si cambia alguno de estos 4 valores
+
+  // Segundo vigilante para cargar los archivos del repositorio en 'siteConfig.repositories_menu'
+  useEffect(() => {
+    async function obtenerArchivosDeGitHub2() {
+      setCargandoRepo2(true); // Activamos aviso de "Cargando..."
+      setErrorRepo2(null);    // Limpiamos errores anteriores
+
+      try {
+        const urlApi = `https://api.github.com/repos/${propietario2}/${nombreRepo2}/contents/${rutaCarpeta2}?ref=${rama2}`;
+        const respuesta = await fetch(urlApi);
+
+        if (!respuesta.ok) {
+          throw new Error(`No se pudo cargar "${nombreRepo2}". Verifica que sea público y la rama "${rama2}" exista.`);
+        }
+
+        const datos = await respuesta.json();
+
+        if (Array.isArray(datos)) {
+          datos.sort((a, b) => {
+            if (a.type === b.type) {
+              return a.name.localeCompare(b.name);
+            }
+            if (a.type === 'dir') {
+              return -1;
+            }
+            return 1;
+          });
+          setArchivosRepo2(datos);
+        } else {
+          setArchivosRepo2([]);
+        }
+      } catch (error) {
+        setErrorRepo2(error.message);
+      } finally {
+        setCargandoRepo2(false);
+      }
+    }
+
+    obtenerArchivosDeGitHub2();
+  }, [propietario2, nombreRepo2, rama2, rutaCarpeta2]); // Se repite si cambia alguno de estos 4 valores
 
   // =========================================================================
   // 6. INTERFAZ VISUAL (Lo que se dibuja en pantalla)
@@ -380,7 +449,7 @@ export default function App() {
             className="p-6 rounded-2xl bg-[#111317] border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-4"
           >
             <div>
-              <span className="text-xs font-bold uppercase tracking-widest text-[#B8975B]">03 • Código Fuente</span>
+              <span className="text-xs font-bold uppercase tracking-widest text-[#B8975B]">03 • Código Fuente Kaffa Coffee Shop</span>
               <h3 className="text-xl font-black text-white mt-0.5">Paquetes Completos del Proyecto (.ZIP)</h3>
             </div>
 
@@ -404,12 +473,41 @@ export default function App() {
             </div>
           </div>
 
+          {/* Sección 3: Botones de descarga .ZIP */}
+          <div
+            className="p-6 rounded-2xl bg-[#111317] border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-4"
+          >
+            <div>
+              <span className="text-xs font-bold uppercase tracking-widest text-[#B8975B]">04 • Código Fuente Menú Integrador</span>
+              <h3 className="text-xl font-black text-white mt-0.5">Paquete Completos del Proyecto (.ZIP)</h3>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              {siteConfig.repositories_menu.map((repo) => {
+                // CÓMO SE DESCARGA EL .ZIP: GitHub tiene una ruta pública estándar para comprimir
+                // cualquier repositorio público: /archive/refs/heads/[nombre-rama].zip
+                // Al poner esa URL en un enlace <a>, GitHub empaqueta y descarga el código automáticamente.
+                const urlZip = `https://github.com/${repo.owner}/${repo.repo}/archive/refs/heads/${repo.branch}.zip`;
+                return (
+                  <a
+                    key={repo.id}
+                    href={urlZip}
+                    className="inline-flex items-center px-4 py-3 text-xs uppercase tracking-wider font-black rounded-xl text-black bg-[#B8975B] hover:bg-[#a3834d] transition-colors"
+                  >
+                    <Archive className="w-4 h-4 mr-2" />
+                    {repo.label} (.ZIP)
+                  </a>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Sección 4: Explorador de carpetas y archivos de GitHub */}
           <div>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
               <div>
-                <span className="text-xs font-bold uppercase tracking-widest text-[#B8975B]">04 • Trazabilidad</span>
-                <h2 className="text-2xl sm:text-3xl font-black text-white">Repositorios en GitHub</h2>
+                <span className="text-xs font-bold uppercase tracking-widest text-[#B8975B]">05 • Trazabilidad</span>
+                <h2 className="text-2xl sm:text-3xl font-black text-white">Repositorios en GitHub (Kaffa Coffee Shop)</h2>
               </div>
 
               {/* Pestañas para elegir Frontend o Backend */}
@@ -442,7 +540,7 @@ export default function App() {
                   className="inline-flex items-center px-4 py-2.5 text-xs font-bold rounded-xl text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors"
                 >
                   <GitBranch className="w-4 h-4 mr-1.5 text-[#B8975B]" />
-                  GitHub ↗
+                  GitHub Kaffa ↗
                 </a>
               </div>
             </div>
@@ -540,6 +638,127 @@ export default function App() {
               </div>
             </div>
           </div>
+
+          {/* Segundo bloque: Explorador de carpetas y archivos de GitHub para 'repositories_menu' */}
+          <div className="pt-4 border-t border-slate-800/80">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+              <div>
+                <span className="text-xs font-bold uppercase tracking-widest text-[#B8975B]"></span>
+                <h2 className="text-2xl sm:text-3xl font-black text-white">Repositorio en GitHub (Menú Integrador)</h2>
+              </div>
+
+              {/* Pestañas para elegir repositorio de 'siteConfig.repositories_menu' */}
+              <div className="flex flex-wrap items-center gap-2">
+                {siteConfig.repositories_menu.map((repo, indice) => {
+                  const estaSeleccionado = indiceRepo2 === indice;
+                  return (
+                    <button
+                      key={repo.id}
+                      onClick={() => cambiarRepositorio2(indice)}
+                      className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        estaSeleccionado
+                          ? 'bg-[#B8975B] text-black'
+                          : 'bg-[#111317] text-slate-300 border border-slate-700 hover:border-slate-500'
+                      }`}
+                    >
+                      {repo.label}
+                    </button>
+                  );
+                })}
+
+                <a
+                  href={urlGitHub2}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center px-4 py-2.5 text-xs font-bold rounded-xl text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors"
+                >
+                  <GitBranch className="w-4 h-4 mr-1.5 text-[#B8975B]" />
+                  GitHub Integrador ↗
+                </a>
+              </div>
+            </div>
+
+            {/* Caja del segundo explorador de archivos */}
+            <div className="rounded-2xl bg-[#111317] border border-slate-800 overflow-hidden">
+
+              {/* Barra superior de ruta (Breadcrumbs) */}
+              <div className="px-5 py-3 bg-[#1c1f26] border-b border-slate-800 flex items-center justify-between text-xs font-mono">
+                <div className="flex items-center gap-1.5">
+                  <button onClick={() => setRutaCarpeta2('')} className="text-[#B8975B] font-bold hover:underline cursor-pointer">
+                    {nombreRepo2}
+                  </button>
+
+                  {/* Si estamos dentro de subcarpetas, mostramos cada nivel */}
+                  {rutaCarpeta2 !== '' &&
+                    rutaCarpeta2.split('/').map((carpeta, index, arreglo) => {
+                      const rutaAcumulada = arreglo.slice(0, index + 1).join('/');
+                      return (
+                        <React.Fragment key={rutaAcumulada}>
+                          <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                          <button onClick={() => setRutaCarpeta2(rutaAcumulada)} className="text-slate-300 hover:text-white cursor-pointer">
+                            {carpeta}
+                          </button>
+                        </React.Fragment>
+                      );
+                    })}
+                </div>
+
+                {/* Botón "Atrás" solo aparece si no estamos en la carpeta raíz */}
+                {rutaCarpeta2 !== '' && (
+                  <button onClick={regresarCarpetaAnterior2} className="flex items-center gap-1 text-slate-300 hover:text-[#B8975B] cursor-pointer">
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    <span>Atrás</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Lista de carpetas y archivos */}
+              <div className="divide-y divide-slate-800/60">
+                {cargandoRepo2 && (
+                  <div className="p-8 text-center text-sm text-slate-400">Cargando archivos de {nombreRepo2}...</div>
+                )}
+
+                {!cargandoRepo2 && errorRepo2 && (
+                  <div className="p-8 text-center text-sm text-slate-400">{errorRepo2}</div>
+                )}
+
+                {!cargandoRepo2 && !errorRepo2 && archivosRepo2.map((item) => {
+                  // GitHub entrega el peso en bytes; dividimos entre 1024 para mostrarlo en Kilobytes (KB)
+                  const pesoEnKB = (item.size / 1024).toFixed(1);
+                  return (
+                    <div key={item.sha} className="px-5 py-3 flex items-center justify-between hover:bg-[#16181e]">
+                      {item.type === 'dir' ? (
+                        // Si es carpeta, al hacer clic entramos a ella
+                        <button
+                          onClick={() => setRutaCarpeta2(item.path)}
+                          className="flex items-center gap-2.5 text-sm font-medium text-white hover:text-[#B8975B] cursor-pointer"
+                        >
+                          <Folder className="w-4 h-4 text-[#B8975B]" />
+                          <span>{item.name}</span>
+                        </button>
+                      ) : (
+                        // Si es archivo, al hacer clic lo abre en GitHub
+                        <a
+                          href={item.html_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2.5 text-sm text-slate-300 hover:text-white"
+                        >
+                          <FileCode className="w-4 h-4 text-slate-500" />
+                          <span>{item.name}</span>
+                        </a>
+                      )}
+
+                      <span className="text-xs text-slate-500 font-mono">
+                        {item.type === 'dir' ? 'Carpeta' : `${pesoEnKB} KB`}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
         </div>
       </section>
 

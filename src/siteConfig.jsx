@@ -61,6 +61,16 @@ export const siteConfig = {
   drivelUrl: "https://drive.google.com/file/d/1L1SeH4BapyT2HrINRyqj8kwHpO3dYo-9/view?usp=drive_link",
 
   // 3 y 4. REPOSITORIOS GITHUB (FRONTEND Y BACKEND)
+  repositories_menu: [
+    {
+      id: "menu",
+      label: "Repositorio completo",
+      owner: "ernydrw",
+      repo: "integradora",
+      branch: "main"
+    }
+  ],
+  
   repositories: [
     {
       id: "frontend",
